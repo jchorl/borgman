@@ -1,6 +1,12 @@
+#[macro_use]
+extern crate log;
+
 use clap::{value_t, App, Arg, Values};
+use log::{error, info};
 
 fn main() {
+    env_logger::init();
+
     let matches = App::new("borgman")
         .version("0.0.1")
         .author("josh chorlton")
@@ -48,6 +54,8 @@ fn main() {
         )
         .get_matches();
 
+    info!("starting");
+
     let inputs = matches
         .values_of("INPUTS")
         .unwrap_or(Values::default())
@@ -60,8 +68,8 @@ fn main() {
     let keep_weekly = value_t!(matches, "KEEP_WEEKLY", u8).unwrap();
     let keep_monthly = value_t!(matches, "KEEP_MONTHLY", u8).unwrap();
 
-    println!(
-        "keep daily: {}, weekly: {}, monthly: {}",
-        keep_daily, keep_weekly, keep_monthly
+    info!(
+        "options: inputs={:?}, excludes={:?}, keep_daily={}, keep_weekly={}, keep_monthly={}",
+        inputs, excludes, keep_daily, keep_weekly, keep_monthly
     );
 }
