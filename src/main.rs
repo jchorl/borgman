@@ -1,4 +1,5 @@
 use clap::{value_t, App, Arg, Values};
+use env_logger::Env;
 use log::{debug, info};
 use std::process::Command;
 
@@ -27,14 +28,20 @@ mod errors {
 use errors::*;
 
 fn main() {
-    env_logger::init();
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
 
     let matches = App::new("borgman")
         .version("0.0.1")
         .author("josh chorlton")
         .about("Manages the borg (https://www.borgbackup.org/)")
         .arg(
-            Arg::with_name("KEEP_DAILY")
+            Arg::with_name("dry-run")
+                .short('n')
+                .long("dry-run")
+                .help("do not actually execute commands"),
+        )
+        .arg(
+            Arg::with_name("keep-daily")
                 .short('d')
                 .long("keep-daily")
                 .value_name("DAILY")
@@ -43,7 +50,7 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("KEEP_WEEKLY")
+            Arg::with_name("keep-weekly")
                 .short('w')
                 .long("keep-weekly")
                 .value_name("WEEKLY")
@@ -52,7 +59,7 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("KEEP_MONTHLY")
+            Arg::with_name("keep-monthly")
                 .short('m')
                 .long("keep-monthly")
                 .value_name("MONTHLY")
@@ -61,17 +68,19 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("EXCLUDES")
+            Arg::with_name("excludes")
                 .help("exclude paths matching PATTERN")
                 .takes_value(true)
                 .short('e')
                 .long("exclude")
+                .value_name("EXCLUDES")
                 .multiple(true),
         )
         .arg(
-            Arg::with_name("INPUTS")
+            Arg::with_name("inputs")
                 .help("paths to archive")
                 .required(true)
+                .value_name("INPUTS")
                 .multiple(true),
         )
         .get_matches();
@@ -90,30 +99,33 @@ fn main() {
 fn run(matches: clap::ArgMatches) -> Result<()> {
     info!("starting");
 
-    let mut inputs: Vec<&str> = matches.values_of("INPUTS").unwrap().collect();
+    let dry_run = matches.is_present("dry-run");
+    let mut inputs: Vec<&str> = matches.values_of("inputs").unwrap().collect();
     let excludes: Vec<&str> = matches
-        .values_of("EXCLUDES")
+        .values_of("excludes")
         .unwrap_or(Values::default())
         .collect();
-    let keep_daily = value_t!(matches, "KEEP_DAILY", u8).chain_err(|| "parsing daily flag")?;
-    let keep_weekly = value_t!(matches, "KEEP_WEEKLY", u8).chain_err(|| "parsing weekly flag")?;
+    let keep_daily = value_t!(matches, "keep-daily", u8).chain_err(|| "parsing daily flag")?;
+    let keep_weekly = value_t!(matches, "keep-weekly", u8).chain_err(|| "parsing weekly flag")?;
     let keep_monthly =
-        value_t!(matches, "KEEP_MONTHLY", u8).chain_err(|| "parsing monthly flag")?;
+        value_t!(matches, "keep-monthly", u8).chain_err(|| "parsing monthly flag")?;
 
     info!(
-        "options: inputs={:?}, excludes={:?}, keep_daily={}, keep_weekly={}, keep_monthly={}",
-        inputs, excludes, keep_daily, keep_weekly, keep_monthly
+        "options: dry_run={} inputs={:?}, excludes={:?}, keep_daily={}, keep_weekly={}, keep_monthly={}",
+        dry_run, inputs, excludes, keep_daily, keep_weekly, keep_monthly
     );
 
     // first do the borg backup
     let backup_cmd = "borg";
     let mut backup_args = vec![
         "--verbose",
-        "--filter", "AME",
+        "--filter",
+        "AME",
         "--list",
         "--stats",
         "--show-rc",
-        "--compression", "lz4",
+        "--compression",
+        "lz4",
         "--exclude-caches",
     ];
     for e in excludes {
@@ -122,14 +134,19 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     }
     backup_args.push("::'{hostname}-{now}'");
     backup_args.append(&mut inputs);
-    let backup_out = run_cmd(backup_cmd, backup_args)?;
+    let backup_out = run_cmd(backup_cmd, backup_args, dry_run)?;
     println!("{}", backup_out);
 
     Ok(())
 }
 
-fn run_cmd(cmd: &str, args: Vec<&str>) -> Result<String> {
+fn run_cmd(cmd: &str, args: Vec<&str>, dry_run: bool) -> Result<String> {
     debug!("running `{} {}`", cmd, args.join(" "));
+
+    if dry_run {
+        info!("would run `{} {}`", cmd, args.join(" "));
+        return Ok(String::from("not running, in dry_run mode"));
+    }
 
     let output = Command::new(cmd)
         .args(args.clone())
