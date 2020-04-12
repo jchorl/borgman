@@ -83,6 +83,22 @@ fn main() {
                 .value_name("INPUTS")
                 .multiple(true),
         )
+        .arg(
+            Arg::with_name("b2_account")
+                .help("account ID for Backblaze B2")
+                .required(true)
+                .takes_value(true)
+                .long("b2-account")
+                .value_name("ACCOUNT_ID"),
+        )
+        .arg(
+            Arg::with_name("b2_key")
+                .help("key for Backblaze B2")
+                .required(true)
+                .takes_value(true)
+                .long("b2-key")
+                .value_name("KEY"),
+        )
         .get_matches();
 
     if let Err(ref e) = run(matches) {
@@ -135,7 +151,44 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     backup_args.push("::'{hostname}-{now}'");
     backup_args.append(&mut inputs);
     let backup_out = run_cmd(backup_cmd, backup_args, dry_run)?;
-    println!("{}", backup_out);
+    println!("backup complete: {}", backup_out);
+
+    // then prune
+    let prune_cmd = "borg";
+    let keep_daily_str = keep_daily.to_string();
+    let keep_weekly_str = keep_weekly.to_string();
+    let keep_monthly_str = keep_monthly.to_string();
+    let prune_args = vec![
+        "--list",
+        "--prefix",
+        "'{hostname}-'",
+        "--show-rc",
+        "--keep-daily",
+        &keep_daily_str,
+        "--keep-weekly",
+        &keep_weekly_str,
+        "--keep-monthly",
+        &keep_monthly_str,
+    ];
+    let prune_out = run_cmd(prune_cmd, prune_args, dry_run)?;
+    println!("prune complete: {}", prune_out);
+
+    // then rclone
+    let rclone_cmd = "rclone";
+    let b2_account = matches.value_of("b2_account").unwrap();
+    let b2_key = matches.value_of("b2_key").unwrap();
+    let rclone_args = vec![
+        "sync",
+        "--delete-excluded",
+        "--b2-account",
+        b2_account,
+        "--b2-key",
+        b2_key,
+        "source:path",
+        "dest:path",
+    ];
+    let rclone_out = run_cmd(rclone_cmd, rclone_args, dry_run)?;
+    println!("rclone complete: {}", rclone_out);
 
     Ok(())
 }
