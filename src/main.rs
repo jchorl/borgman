@@ -90,11 +90,11 @@ fn main() {
 fn run(matches: clap::ArgMatches) -> Result<()> {
     info!("starting");
 
-    let inputs = matches.values_of("INPUTS").unwrap().collect::<String>();
-    let excludes = matches
+    let mut inputs: Vec<&str> = matches.values_of("INPUTS").unwrap().collect();
+    let excludes: Vec<&str> = matches
         .values_of("EXCLUDES")
         .unwrap_or(Values::default())
-        .collect::<String>();
+        .collect();
     let keep_daily = value_t!(matches, "KEEP_DAILY", u8).chain_err(|| "parsing daily flag")?;
     let keep_weekly = value_t!(matches, "KEEP_WEEKLY", u8).chain_err(|| "parsing weekly flag")?;
     let keep_monthly =
@@ -106,24 +106,40 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     );
 
     // first do the borg backup
-    let backup_out = run_cmd("ls".to_string(), vec!["--fdsfsd".to_string()])?;
+    let backup_cmd = "borg";
+    let mut backup_args = vec![
+        "--verbose",
+        "--filter", "AME",
+        "--list",
+        "--stats",
+        "--show-rc",
+        "--compression", "lz4",
+        "--exclude-caches",
+    ];
+    for e in excludes {
+        backup_args.push("--exclude");
+        backup_args.push(e);
+    }
+    backup_args.push("::'{hostname}-{now}'");
+    backup_args.append(&mut inputs);
+    let backup_out = run_cmd(backup_cmd, backup_args)?;
     println!("{}", backup_out);
 
     Ok(())
 }
 
-fn run_cmd(cmd: String, args: Vec<String>) -> Result<String> {
+fn run_cmd(cmd: &str, args: Vec<&str>) -> Result<String> {
     debug!("running `{} {}`", cmd, args.join(" "));
 
-    let output = Command::new(&cmd)
-        .args(&args)
+    let output = Command::new(cmd)
+        .args(args.clone())
         .output()
-        .chain_err(|| ErrorKind::CommandError(format!("{} {}", cmd, args.join(" "))))?;
+        .chain_err(|| ErrorKind::CommandError(format!("{} {}", cmd, args.clone().join(" "))))?;
 
     ensure!(
         output.status.success(),
         ErrorKind::CommandFailure(
-            format!("{} {}", cmd, args.join(" ")),
+            format!("{} {}", cmd, args.clone().join(" ")),
             String::from_utf8(output.stdout).unwrap_or("cant get stdout".to_string()),
             String::from_utf8(output.stderr).unwrap_or("cant get stderr".to_string())
         )
