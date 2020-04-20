@@ -41,6 +41,15 @@ fn main() {
                 .help("do not actually execute commands"),
         )
         .arg(
+            Arg::with_name("repo")
+                .short('r')
+                .long("repo")
+                .value_name("PATH")
+                .help("path to borg repo")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("keep-daily")
                 .short('d')
                 .long("keep-daily")
@@ -84,20 +93,12 @@ fn main() {
                 .multiple(true),
         )
         .arg(
-            Arg::with_name("b2_account")
-                .help("account ID for Backblaze B2")
+            Arg::with_name("rclone-dest")
+                .help("name of dest for rclone sync")
                 .required(true)
                 .takes_value(true)
-                .long("b2-account")
-                .value_name("ACCOUNT_ID"),
-        )
-        .arg(
-            Arg::with_name("b2_key")
-                .help("key for Backblaze B2")
-                .required(true)
-                .takes_value(true)
-                .long("b2-key")
-                .value_name("KEY"),
+                .long("rclone-dest")
+                .value_name("DEST"),
         )
         .get_matches();
 
@@ -148,10 +149,13 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
         backup_args.push("--exclude");
         backup_args.push(e);
     }
-    backup_args.push("::'{hostname}-{now}'");
+
+    let repo_path = matches.value_of("repo").unwrap();
+    let backup_name = repo_path.to_owned() + "::'{hostname}-{now}'";
+    backup_args.push(&backup_name);
     backup_args.append(&mut inputs);
     let backup_out = run_cmd(backup_cmd, backup_args, dry_run)?;
-    println!("backup complete: {}", backup_out);
+    info!("backup complete:\n{}", backup_out);
 
     // then prune
     let prune_cmd = "borg";
@@ -171,24 +175,20 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
         &keep_monthly_str,
     ];
     let prune_out = run_cmd(prune_cmd, prune_args, dry_run)?;
-    println!("prune complete: {}", prune_out);
+    info!("prune complete:\n{}", prune_out);
 
     // then rclone
     let rclone_cmd = "rclone";
-    let b2_account = matches.value_of("b2_account").unwrap();
-    let b2_key = matches.value_of("b2_key").unwrap();
+    let rclone_dest = matches.value_of("rclone_dest").unwrap();
+    let rclone_sync_dest_path = rclone_dest.to_owned() + ":" + "path";
     let rclone_args = vec![
         "sync",
         "--delete-excluded",
-        "--b2-account",
-        b2_account,
-        "--b2-key",
-        b2_key,
-        "source:path",
-        "dest:path",
+        &repo_path,
+        &rclone_sync_dest_path,
     ];
     let rclone_out = run_cmd(rclone_cmd, rclone_args, dry_run)?;
-    println!("rclone complete: {}", rclone_out);
+    info!("rclone complete:\n{}", rclone_out);
 
     Ok(())
 }
