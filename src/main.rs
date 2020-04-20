@@ -152,7 +152,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     }
 
     let repo_path = matches.value_of("repo").unwrap();
-    let backup_name = repo_path.to_owned() + "::'data-{now}'";
+    let backup_name = String::from(repo_path) + "::'data-{now}'";
     backup_args.push(&backup_name);
     backup_args.append(&mut inputs);
     let backup_out = run_cmd(backup_cmd, backup_args, dry_run)?;
@@ -175,6 +175,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
         &keep_weekly_str,
         "--keep-monthly",
         &keep_monthly_str,
+        repo_path,
     ];
     let prune_out = run_cmd(prune_cmd, prune_args, dry_run)?;
     info!("prune complete:\n{}", prune_out);
