@@ -135,6 +135,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     // first do the borg backup
     let backup_cmd = "borg";
     let mut backup_args = vec![
+        "create",
         "--verbose",
         "--filter",
         "AME",
@@ -151,7 +152,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     }
 
     let repo_path = matches.value_of("repo").unwrap();
-    let backup_name = repo_path.to_owned() + "::'{hostname}-{now}'";
+    let backup_name = repo_path.to_owned() + "::'data-{now}'";
     backup_args.push(&backup_name);
     backup_args.append(&mut inputs);
     let backup_out = run_cmd(backup_cmd, backup_args, dry_run)?;
@@ -163,9 +164,10 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     let keep_weekly_str = keep_weekly.to_string();
     let keep_monthly_str = keep_monthly.to_string();
     let prune_args = vec![
+        "prune",
         "--list",
         "--prefix",
-        "'{hostname}-'",
+        "'data-'",
         "--show-rc",
         "--keep-daily",
         &keep_daily_str,
