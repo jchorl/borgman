@@ -179,7 +179,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
 
     // then rclone
     let rclone_cmd = "rclone";
-    let rclone_dest = matches.value_of("rclone_dest").unwrap();
+    let rclone_dest = matches.value_of("rclone-dest").unwrap();
     let rclone_sync_dest_path = rclone_dest.to_owned() + ":" + "path";
     let rclone_args = vec![
         "sync",
