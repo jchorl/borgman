@@ -1,11 +1,17 @@
 use clap::{value_t, App, Arg, Values};
 use env_logger::Env;
 use log::{debug, info};
+use prometheus::proto::MetricFamily;
+use prometheus::{Gauge, Histogram};
 use std::fs;
 use std::process::Command;
 
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate prometheus;
 
 mod errors {
     error_chain! {
@@ -31,6 +37,13 @@ mod errors {
 }
 
 use errors::*;
+
+lazy_static! {
+    static ref SUCCESS_GAUGE: Gauge =
+        register_gauge!("success_gauge", "1 if run succeeded, false otherwise").unwrap();
+    static ref RUNTIME_HISTOGRAM: Histogram =
+        register_histogram!("run_duration_seconds", "The total runtime in seconds.").unwrap();
+}
 
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
@@ -105,7 +118,20 @@ fn main() {
                 .long("rclone-dest")
                 .value_name("DEST"),
         )
+        .arg(
+            Arg::with_name("prometheus-push-addr")
+                .help("prometheus push address")
+                .takes_value(true)
+                .long("prometheus-push-addr")
+                .value_name("ADDR"),
+        )
         .get_matches();
+
+    let metric_families = prometheus::gather();
+    let _timer = RUNTIME_HISTOGRAM.start_timer();
+
+    let matches_clone = matches.clone();
+    let metrics_addr = matches_clone.value_of("prometheus-push-addr");
 
     if let Err(ref e) = run(matches) {
         use error_chain::ChainedError;
@@ -114,7 +140,17 @@ fn main() {
         let errmsg = "Error writing to stderr";
 
         writeln!(stderr, "{}", e.display_chain()).expect(errmsg);
+
+        if let Some(ref addr) = metrics_addr {
+            SUCCESS_GAUGE.set(0.0);
+            push_metrics(addr, metric_families).expect("pushing metrics");
+        }
         ::std::process::exit(1);
+    }
+
+    if let Some(ref addr) = metrics_addr {
+        SUCCESS_GAUGE.set(1.0);
+        push_metrics(addr, metric_families).expect("pushing metrics");
     }
 }
 
@@ -246,4 +282,9 @@ fn validate_inputs(paths: &Vec<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn push_metrics(address: &str, metric_families: Vec<MetricFamily>) -> Result<()> {
+    prometheus::push_metrics("borgman", labels! {}, address, metric_families, None)
+        .chain_err(|| "emitting metrics")
 }
