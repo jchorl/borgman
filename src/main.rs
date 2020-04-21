@@ -4,6 +4,7 @@ use log::{debug, info};
 use prometheus::{Gauge, Histogram};
 use std::fs;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[macro_use]
 extern crate error_chain;
@@ -38,10 +39,16 @@ mod errors {
 use errors::*;
 
 lazy_static! {
-    static ref SUCCESS_GAUGE: Gauge =
-        register_gauge!("success_gauge", "1 if run succeeded, false otherwise").unwrap();
-    static ref RUNTIME_HISTOGRAM: Histogram =
-        register_histogram!("run_duration_seconds", "The total runtime in seconds.").unwrap();
+    static ref LAST_COMPLETED_GAUGE: Gauge = register_gauge!(
+        "borgman_last_completed_epoch_seconds",
+        "The time of last completion"
+    )
+    .unwrap();
+    static ref RUNTIME_HISTOGRAM: Histogram = register_histogram!(
+        "borgman_run_duration_seconds",
+        "The total runtime in seconds"
+    )
+    .unwrap();
 }
 
 fn main() {
@@ -140,15 +147,15 @@ fn main() {
         writeln!(stderr, "{}", e.display_chain()).expect(errmsg);
 
         if let Some(ref addr) = metrics_addr {
-            SUCCESS_GAUGE.set(0.0);
-            push_metrics(addr).expect("pushing metrics");
+            LAST_COMPLETED_GAUGE.set(cur_time_epoch_seconds() as f64);
+            let _ = push_metrics(addr, false);
         }
         ::std::process::exit(1);
     }
 
     if let Some(ref addr) = metrics_addr {
-        SUCCESS_GAUGE.set(1.0);
-        push_metrics(addr).expect("pushing metrics");
+        LAST_COMPLETED_GAUGE.set(cur_time_epoch_seconds() as f64);
+        let _ = push_metrics(addr, true);
     }
 }
 
@@ -282,7 +289,21 @@ fn validate_inputs(paths: &Vec<&str>) -> Result<()> {
     Ok(())
 }
 
-fn push_metrics(address: &str) -> Result<()> {
-    prometheus::push_metrics("borgman", labels! {}, address, prometheus::gather(), None)
-        .chain_err(|| "emitting metrics")
+fn cur_time_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+fn push_metrics(address: &str, success: bool) -> Result<()> {
+    let success_str = if success { "1" } else { "0" };
+    prometheus::push_metrics(
+        "borgman",
+        labels! {"success".to_owned() => success_str.to_owned(),},
+        address,
+        prometheus::gather(),
+        None,
+    )
+    .chain_err(|| "emitting metrics")
 }
