@@ -183,12 +183,11 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     // then rclone
     let rclone_cmd = "rclone";
     let rclone_dest = matches.value_of("rclone-dest").unwrap();
-    let rclone_sync_dest_path = rclone_dest.to_owned() + ":";
     let rclone_args = vec![
         "sync",
         "--delete-excluded",
         &repo_path,
-        &rclone_sync_dest_path,
+        rclone_dest,
     ];
     let rclone_out = run_cmd(rclone_cmd, rclone_args, dry_run)?;
     info!("rclone complete:\n{}", rclone_out);
