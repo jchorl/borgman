@@ -1,6 +1,7 @@
 use clap::{value_t, App, Arg, Values};
 use env_logger::Env;
 use log::{debug, info};
+use std::fs;
 use std::process::Command;
 
 #[macro_use]
@@ -20,6 +21,10 @@ mod errors {
                 {}\n\
                 stderr:\n\
                 {}", cmd, stdout, stderr)
+            }
+            InputError(path: String, message: String) {
+                description("Input error")
+                display("Error with input {}: {}", path, message)
             }
         }
     }
@@ -132,6 +137,11 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
         dry_run, inputs, excludes, keep_daily, keep_weekly, keep_monthly
     );
 
+    // IMPORTANT if any inputs dont exist or are empty
+    // the drive is probably not mounted and there's an issue
+    // we don't want to overwrite remote state
+    validate_inputs(&inputs)?;
+
     // first do the borg backup
     let backup_cmd = "borg";
     let mut backup_args = vec![
@@ -183,11 +193,7 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     // then rclone
     let rclone_cmd = "rclone";
     let rclone_dest = matches.value_of("rclone-dest").unwrap();
-    let rclone_args = vec![
-        "sync",
-        &repo_path,
-        rclone_dest,
-    ];
+    let rclone_args = vec!["sync", &repo_path, rclone_dest];
     let rclone_out = run_cmd(rclone_cmd, rclone_args, dry_run)?;
     info!("rclone complete:\n{}", rclone_out);
 
@@ -217,4 +223,27 @@ fn run_cmd(cmd: &str, args: Vec<&str>, dry_run: bool) -> Result<String> {
     );
 
     String::from_utf8(output.stdout).chain_err(|| "parsing stdout")
+}
+
+// validate_inputs checks:
+// 1. if the path exists
+// 2. if the path is a file, all good
+// 3. if its a dir, make sure it's non-empty
+fn validate_inputs(paths: &Vec<&str>) -> Result<()> {
+    for &path in paths {
+        let attr = fs::metadata(path).chain_err(|| {
+            ErrorKind::InputError(String::from(path), String::from("can't get metadata"))
+        })?;
+        if attr.is_file() {
+            continue;
+        }
+
+        let files = fs::read_dir(path).unwrap();
+        ensure!(
+            files.count() > 0,
+            ErrorKind::InputError(String::from(path), String::from("dir is empty"))
+        )
+    }
+
+    Ok(())
 }
