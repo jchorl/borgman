@@ -185,7 +185,6 @@ fn run(matches: clap::ArgMatches) -> Result<()> {
     let rclone_dest = matches.value_of("rclone-dest").unwrap();
     let rclone_args = vec![
         "sync",
-        "--delete-excluded",
         &repo_path,
         rclone_dest,
     ];
