@@ -1,7 +1,6 @@
 use clap::{value_t, App, Arg, Values};
 use env_logger::Env;
 use log::{debug, info};
-use prometheus::proto::MetricFamily;
 use prometheus::{Gauge, Histogram};
 use std::fs;
 use std::process::Command;
@@ -127,7 +126,6 @@ fn main() {
         )
         .get_matches();
 
-    let metric_families = prometheus::gather();
     let _timer = RUNTIME_HISTOGRAM.start_timer();
 
     let matches_clone = matches.clone();
@@ -143,14 +141,14 @@ fn main() {
 
         if let Some(ref addr) = metrics_addr {
             SUCCESS_GAUGE.set(0.0);
-            push_metrics(addr, metric_families).expect("pushing metrics");
+            push_metrics(addr).expect("pushing metrics");
         }
         ::std::process::exit(1);
     }
 
     if let Some(ref addr) = metrics_addr {
         SUCCESS_GAUGE.set(1.0);
-        push_metrics(addr, metric_families).expect("pushing metrics");
+        push_metrics(addr).expect("pushing metrics");
     }
 }
 
@@ -284,7 +282,7 @@ fn validate_inputs(paths: &Vec<&str>) -> Result<()> {
     Ok(())
 }
 
-fn push_metrics(address: &str, metric_families: Vec<MetricFamily>) -> Result<()> {
-    prometheus::push_metrics("borgman", labels! {}, address, metric_families, None)
+fn push_metrics(address: &str) -> Result<()> {
+    prometheus::push_metrics("borgman", labels! {}, address, prometheus::gather(), None)
         .chain_err(|| "emitting metrics")
 }
